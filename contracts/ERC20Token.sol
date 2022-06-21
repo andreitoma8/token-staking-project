@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// Creator: andreitoma8
 pragma solidity ^0.8.4;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -19,17 +20,17 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
     // Flexible stake rewards per hour. A fraction calculated as x/10.000.000 to get the percentage
     uint256 public flexStakeRPH = 246; // 0.00246%/h or 21.56% APR
 
-    // Three months lock APR
-    uint256 public threeMonthsRPH = 246; // 0.00246%/h or 21.56% APR
+    // Three months lock rewards as %
+    uint256 public threeMonthsRPH = 10; // 10%
 
-    // Three months lock APR
-    uint256 public sixMonthsRPH = 246; // 0.00246%/h or 21.56% APR
+    // Three months lock rewards as %
+    uint256 public sixMonthsRPH = 25; // 25%
 
-    // Three months lock APR
-    uint256 public twelveMonthsRPH = 246; // 0.00246%/h or 21.56% APR
+    // Three months lock rewards as %
+    uint256 public twelveMonthsRPH = 50; // 50%
 
-    // Three months lock APR
-    uint256 public twentyFourMonthsRPH = 246; // 0.00246%/h or 21.56% APR
+    // Three months lock rewards as %
+    uint256 public twentyFourMonthsRPH = 100; // 100%
 
     // Stake Types
     enum StakeType {
@@ -56,6 +57,7 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
     struct TokenLock {
         uint256 timeOfUnlock;
         uint256 amount;
+        StakeType typeOfStake;
     }
 
     // Mapping of staker address to staker info
@@ -73,10 +75,10 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
         excludedFromFee[address(this)] = true;
     }
 
-    // If address has no Staker struct, initiate one. If address already was a stake,
+    // If address has no Staker struct, initiate one. If address already has a stake,
     // calculate the rewards and add them to unclaimedRewards, reset the last time of
     // deposit and then add _amount to the already deposited amount.
-    // REceive the amount staked.
+    // Receive the amount staked.
     function stake(uint256 _amount) external {
         require(_amount >= minStake, "Amount smaller than minimimum deposit");
         require(
@@ -107,7 +109,7 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
         _mint(address(this), rewards);
     }
 
-    // Send rewards for msg.sender
+    // Mint rewards for msg.sender
     function claimRewards() external {
         uint256 rewards = calculateRewards(msg.sender) +
             stakers[msg.sender].unclaimedRewards;
@@ -135,7 +137,53 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
     }
 
     // Lock tokens to gain a better APR
-    function lockTokens(uint256 _amount, StakeType _stakeType) external {}
+    // User can select a amount to lock and a period to lock for
+    function lockTokens(uint256 _amount, StakeType _stakeType) external {
+        TokenLock memory _lock;
+        _lock.amount = _amount;
+        _lock.typeOfStake;
+        if (_stakeType == StakeType.THREE_MONTHS) {
+            _lock.timeOfUnlock = block.timestamp + 7889231;
+        } else if (_stakeType == StakeType.SIX_MONTHS) {
+            _lock.timeOfUnlock = block.timestamp + 15778463;
+        } else if (_stakeType == StakeType.TWELVE_MONTHS) {
+            _lock.timeOfUnlock = block.timestamp + 31556926;
+        } else {
+            _lock.timeOfUnlock = block.timestamp + 63113852;
+        }
+        userLocks[msg.sender].push(_lock);
+        transferFrom(msg.sender, address(this), _amount);
+    }
+
+    // Users can unlock their deposits after the locked time and get the rewards
+    // or can unlock their deposits before, without getting any rewards
+    function unlockTokens(uint256 _tokenLockIndex) external {
+        require(
+            _tokenLockIndex < userLocks[msg.sender].length,
+            "Index out of bounce!"
+        );
+        TokenLock memory _lock = userLocks[msg.sender][_tokenLockIndex];
+        uint256 _rewards;
+        if (_lock.timeOfUnlock <= block.timestamp) {
+            if (_lock.typeOfStake == StakeType.THREE_MONTHS) {
+                _rewards = (_lock.amount * threeMonthsRPH) / 100;
+            } else if (_lock.typeOfStake == StakeType.SIX_MONTHS) {
+                _rewards = (_lock.amount * sixMonthsRPH) / 100;
+            } else if (_lock.typeOfStake == StakeType.TWELVE_MONTHS) {
+                _rewards = (_lock.amount * twelveMonthsRPH) / 100;
+            } else {
+                _rewards = (_lock.amount * twentyFourMonthsRPH) / 100;
+            }
+        }
+        userLocks[msg.sender][userLocks[msg.sender].length] = userLocks[
+            msg.sender
+        ][_tokenLockIndex];
+        userLocks[msg.sender].pop();
+        transfer(msg.sender, _lock.amount);
+        if (_rewards > 0) {
+            _mint(msg.sender, _rewards);
+        }
+    }
 
     // Allows the owner to pause token transfers
     function pause() external onlyOwner {
@@ -170,6 +218,21 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
     // Inlcude address to pay fee
     function includeToFee(address _address) external onlyOwner {
         excludedFromFee[_address] = false;
+    }
+
+    // Function useful for fron-end that returns user stake, rewards and token locks by address
+    function getUserInfo(address _user)
+        public
+        view
+        returns (
+            uint256 _stake,
+            uint256 _rewards,
+            TokenLock[] memory _tokenLocks
+        )
+    {
+        _stake = stakers[_user].deposited;
+        _rewards = calculateRewards(_user) + stakers[_user].unclaimedRewards;
+        return (_stake, _rewards, userLocks[_user]);
     }
 
     // Calculate the rewards since the last update on Deposit info

@@ -32,6 +32,12 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
     // Three months lock rewards as %
     uint256 public twentyFourMonthsRPH = 100; // 100%
 
+    // Total amount of tokens staked
+    uint256 public totalTokensStaked;
+
+    // Total rewards paid trough staking
+    uint256 public totalRewardsPaid;
+
     // Stake Types
     enum StakeType {
         THREE_MONTHS,
@@ -69,7 +75,7 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
     // Mapping of addresses that are excluded from paying fees
     mapping(address => bool) public excludedFromFee;
 
-    constructor() ERC20("Token", "TKN") {
+    constructor() ERC20("Name", "TICKER") {
         _mint(msg.sender, 10000000000 * 10**decimals());
         excludedFromFee[msg.sender] = true;
         excludedFromFee[address(this)] = true;
@@ -96,6 +102,7 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
             stakers[msg.sender].timeOfLastUpdate = block.timestamp;
         }
         transferFrom(msg.sender, address(this), _amount);
+        totalTokensStaked += _amount;
     }
 
     // Compound the rewards and reset the last time of update for Deposit info
@@ -107,6 +114,7 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
         stakers[msg.sender].deposited += rewards;
         stakers[msg.sender].timeOfLastUpdate = block.timestamp;
         _mint(address(this), rewards);
+        totalTokensStaked += rewards;
     }
 
     // Mint rewards for msg.sender
@@ -117,6 +125,7 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
         stakers[msg.sender].unclaimedRewards = 0;
         stakers[msg.sender].timeOfLastUpdate = block.timestamp;
         _mint(msg.sender, rewards);
+        totalRewardsPaid += rewards;
     }
 
     // Withdraw specified amount of staked tokens
@@ -134,6 +143,7 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
         }
         stakers[msg.sender].unclaimedRewards = _rewards;
         transfer(msg.sender, _amount);
+        totalTokensStaked -= _amount;
     }
 
     // Lock tokens to gain a better APR
@@ -153,6 +163,7 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
         }
         userLocks[msg.sender].push(_lock);
         transferFrom(msg.sender, address(this), _amount);
+        totalTokensStaked += _amount;
     }
 
     // Users can unlock their deposits after the locked time and get the rewards
@@ -182,7 +193,9 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
         transfer(msg.sender, _lock.amount);
         if (_rewards > 0) {
             _mint(msg.sender, _rewards);
+            totalRewardsPaid += _rewards;
         }
+        totalTokensStaked -= _lock.amount;
     }
 
     // Allows the owner to pause token transfers
@@ -233,6 +246,23 @@ contract Token is ERC20, ERC20Burnable, Pausable, Ownable {
         _stake = stakers[_user].deposited;
         _rewards = calculateRewards(_user) + stakers[_user].unclaimedRewards;
         return (_stake, _rewards, userLocks[_user]);
+    }
+
+    // Get statistics for admin in front end
+    function getStatistics()
+        external
+        view
+        returns (
+            uint256 totalSupply_,
+            uint256 circulatingSupply_,
+            uint256 totalAmountStaked_,
+            uint256 totalRewardsPaid_
+        )
+    {
+        totalSupply_ = totalSupply();
+        circulatingSupply_ = totalSupply_ - totalRewardsPaid;
+        totalAmountStaked_ = totalTokensStaked;
+        totalRewardsPaid_ = totalRewardsPaid;
     }
 
     // Calculate the rewards since the last update on Deposit info

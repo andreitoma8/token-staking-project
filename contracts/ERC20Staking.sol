@@ -192,9 +192,9 @@ contract Staking is Ownable, Pausable {
         if (_lock.timeOfUnlock <= block.timestamp) {
             _rewards = _lock.rewards;
         }
-        userLocks[msg.sender][userLocks[msg.sender].length - 1] = userLocks[
-            msg.sender
-        ][_tokenLockIndex];
+        userLocks[msg.sender][_tokenLockIndex] = userLocks[msg.sender][
+            userLocks[msg.sender].length - 1
+        ];
         userLocks[msg.sender].pop();
         token.transfer(msg.sender, _lock.amount);
         if (_rewards > 0) {
